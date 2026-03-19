@@ -1,0 +1,534 @@
+<!--
+  CWN — Campus Welfare Network
+  PAGE: Listing Feed (index.html)
+  ================================
+  BACKEND INTEGRATION GUIDE:
+  1. Replace `const LISTINGS` array with: fetch('/api/listings').then(r=>r.json())
+  2. Replace saved listings localStorage with authenticated user API: POST /api/user/saved
+  3. Connect search to server-side search: GET /api/listings?q=...&filter=...
+  4. For Supabase: import { createClient } from '@supabase/supabase-js' and query listings table
+  5. Real-time views: subscribe to Supabase Realtime channel on listings table
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CWN — Find verified student accommodation near your campus. Video tours, no scams.">
+  <title>CWN — Campus Welfare Network | Find Your Hostel</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+<!-- ===== NAVBAR ===== -->
+<nav class="navbar">
+  <a href="index (1).html" class="nav-logo">
+    <span class="logo-box">CWN</span>
+  </a>
+  <div class="nav-search">
+    <i class="fa fa-search si"></i>
+    <input type="text" id="desktopSearch" placeholder="Search hostels, streets, areas…" autocomplete="off">
+  </div>
+  <div class="nav-actions">
+    <a href="signup.html" class="btn btn-ghost btn-sm">Log In</a>
+    <a href="signup.html" class="btn btn-primary btn-sm">Sign Up</a>
+  </div>
+</nav>
+
+<!-- Mobile search -->
+<div class="mobile-search">
+  <div class="nav-search" style="max-width:100%;margin:0">
+    <i class="fa fa-search si"></i>
+    <input type="text" id="mobileSearch" placeholder="Search hostels, streets, areas…" autocomplete="off">
+  </div>
+</div>
+
+<!-- ===== FILTER PILLS ===== -->
+<div class="filter-bar" id="filterBar">
+  <button class="pill active" data-filter="all"><i class="fa fa-th-large"></i> All</button>
+  <button class="pill" data-filter="verified"><i class="fa fa-check-circle"></i> Verified Only</button>
+  <button class="pill" data-filter="trending"><i class="fa fa-fire"></i> Trending</button>
+  <button class="pill" data-filter="under100k"><i class="fa fa-tag"></i> Under ₦100k</button>
+  <button class="pill" data-filter="neargate"><i class="fa fa-map-marker-alt"></i> Near Gate</button>
+  <button class="pill" data-filter="selfcontain"><i class="fa fa-home"></i> Self-Contain</button>
+  <button class="pill" data-filter="generator"><i class="fa fa-bolt"></i> With Generator</button>
+</div>
+
+<!-- ===== STATS BAR ===== -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="stat-num" id="statVerified">47</div>
+    <div class="stat-lbl">Total Verified Listings</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" id="statTrending">12</div>
+    <div class="stat-lbl">Trending This Week</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" id="statAgents">23</div>
+    <div class="stat-lbl">Active Agents</div>
+  </div>
+</div>
+
+<!-- ===== MAIN FEED ===== -->
+<div class="feed-wrap" style="padding-top:1.5rem">
+  <div class="listings-grid" id="listingsGrid">
+    <!-- Cards rendered by JS -->
+  </div>
+</div>
+
+<!-- ===== CTA BANNER ===== -->
+<div class="cta-banner">
+  <h2>🏠 Can't afford it alone? Find a Roommate!</h2>
+  <p>Split rent with a trusted coursemate. Post your request and match with students who have your same vibe, budget, and lifestyle.</p>
+  <a href="roommate.html" class="btn btn-white btn-lg">Find My Roommate →</a>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <p>Built with ❤️ for Nigerian students · <a href="#">Privacy</a> · <a href="#">Contact</a> · CWN © 2025</p>
+</footer>
+
+<!-- ===== MOBILE BOTTOM NAV ===== -->
+<nav class="mob-nav">
+  <div class="mob-nav-inner">
+    <a href="index (1).html" class="mob-nav-item active">
+      <i class="fa fa-home"></i><span>Feed</span>
+    </a>
+    <div class="mob-nav-item" id="mobSearchBtn">
+      <i class="fa fa-search"></i><span>Search</span>
+    </div>
+    <a href="roommate.html" class="mob-nav-item">
+      <i class="fa fa-users"></i><span>Roommate</span>
+    </a>
+    <a href="signup.html" class="mob-nav-item">
+      <i class="fa fa-user-circle"></i><span>Profile</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ===== SHARE MODAL ===== -->
+<div class="overlay" id="shareOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span class="sheet-title">How do you want to share? 🤔</span>
+      <button class="sheet-close" id="shareClose"><i class="fa fa-times"></i></button>
+    </div>
+    <p class="sheet-sub">Choose what you're looking for and we'll write the message for you.</p>
+    <div class="share-opts">
+      <div class="share-opt" id="shareRoommate">
+        <i class="fa fa-user-friends"></i>
+        <div class="share-opt-title">Looking for a Roommate</div>
+        <div class="share-opt-desc">Share to find someone to split rent with</div>
+      </div>
+      <div class="share-opt" id="shareFriends">
+        <i class="fab fa-whatsapp"></i>
+        <div class="share-opt-title">Share with Friends</div>
+        <div class="share-opt-desc">Let your people know about this hostel</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== VIDEO MODAL ===== -->
+<div class="vid-overlay" id="vidOverlay">
+  <div class="vid-box">
+    <button class="vid-close" id="vidClose"><i class="fa fa-times"></i></button>
+    <div class="vid-inner">
+      <iframe id="vidFrame" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// DATA — Replace with API calls in production
+// =====================================================================
+const LISTINGS = [
+  {
+    id: 1,
+    name: "Favour Guest House",
+    street: "Oke-Ola Street",
+    area: "Ogbomoso",
+    distance: "0.3km from LAUTECH gate",
+    price: "₦85,000",
+    priceNum: 85000,
+    roomType: "Self-Contain",
+    verified: true,
+    trending: true,
+    views: 1240,
+    interested: 18,
+    amenities: ["Water", "Light", "Generator", "Security"],
+    agent: { name: "Mr. Adeyemi Ola", initials: "AO", streak: 42 },
+    img: "https://images.unsplash.com/photo-1560185008-b033106af5c3?w=800&q=75&auto=format",
+    vidId: "3209828",
+    vidSrc: "https://player.pexels.com/video/3209828/video-share"
+  },
+  {
+    id: 2,
+    name: "Grace Hostel Block B",
+    street: "Arowomole Area",
+    area: "Ogbomoso",
+    distance: "0.8km from LAUTECH gate",
+    price: "₦60,000",
+    priceNum: 60000,
+    roomType: "Single Room",
+    verified: true,
+    trending: false,
+    views: 876,
+    interested: 11,
+    amenities: ["Water", "Light", "Security"],
+    agent: { name: "Mrs. Ogunleye F.", initials: "OF", streak: 28 },
+    img: "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=75&auto=format",
+    vidId: "4483938",
+    vidSrc: "https://player.pexels.com/video/4483938/video-share"
+  },
+  {
+    id: 3,
+    name: "Emmanuel Court",
+    street: "Takie Area",
+    area: "Ogbomoso",
+    distance: "1.2km from LAUTECH gate",
+    price: "₦120,000",
+    priceNum: 120000,
+    roomType: "Room & Parlour",
+    verified: false,
+    trending: true,
+    views: 2105,
+    interested: 32,
+    amenities: ["Water", "Light", "Generator", "Security", "WiFi"],
+    agent: { name: "Alhaji Babatunde", initials: "AB", streak: 67 },
+    img: "https://images.unsplash.com/photo-1502672023488-70e25813eb80?w=800&q=75&auto=format",
+    vidId: "3014019",
+    vidSrc: "https://player.pexels.com/video/3014019/video-share"
+  },
+  {
+    id: 4,
+    name: "Blessing Lodge",
+    street: "Imalefalafel Road",
+    area: "Ogbomoso",
+    distance: "0.5km from LAUTECH gate",
+    price: "₦75,000",
+    priceNum: 75000,
+    roomType: "Self-Contain",
+    verified: true,
+    trending: false,
+    views: 654,
+    interested: 9,
+    amenities: ["Water", "Light", "Security"],
+    agent: { name: "Sister Kemi A.", initials: "KA", streak: 15 },
+    img: "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=75&auto=format",
+    vidId: "3571264",
+    vidSrc: "https://player.pexels.com/video/3571264/video-share"
+  },
+  {
+    id: 5,
+    name: "Success Hostel",
+    street: "Oke-Ola Street",
+    area: "Ogbomoso",
+    distance: "0.4km from LAUTECH gate",
+    price: "₦45,000",
+    priceNum: 45000,
+    roomType: "Shared Room",
+    verified: false,
+    trending: false,
+    views: 432,
+    interested: 5,
+    amenities: ["Water", "Light"],
+    agent: { name: "Bro. Damilola S.", initials: "DS", streak: 8 },
+    img: "https://images.unsplash.com/photo-1484154218612-5b36a8d8c68a?w=800&q=75&auto=format",
+    vidId: "2793443",
+    vidSrc: "https://player.pexels.com/video/2793443/video-share"
+  },
+  {
+    id: 6,
+    name: "Mercy Apartments",
+    street: "Sabo Area",
+    area: "Ogbomoso",
+    distance: "0.6km from LAUTECH gate",
+    price: "₦95,000",
+    priceNum: 95000,
+    roomType: "Self-Contain",
+    verified: true,
+    trending: true,
+    views: 1680,
+    interested: 24,
+    amenities: ["Water", "Light", "Generator", "WiFi"],
+    agent: { name: "Mr. Olawale K.", initials: "OK", streak: 55 },
+    img: "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800&q=75&auto=format",
+    vidId: "856199",
+    vidSrc: "https://player.pexels.com/video/856199/video-share"
+  }
+];
+
+const AMENITY_ICONS = {
+  "Water": "fa-tint",
+  "Light": "fa-bolt",
+  "Generator": "fa-plug",
+  "Security": "fa-shield-alt",
+  "WiFi": "fa-wifi",
+  "Furnished": "fa-couch"
+};
+
+// =====================================================================
+// STATE
+// =====================================================================
+let activeFilter = 'all';
+let searchQuery = '';
+let activeShareListing = null;
+let savedListings = JSON.parse(localStorage.getItem('cwn_saved') || '[]');
+
+// =====================================================================
+// RENDER CARDS
+// =====================================================================
+function renderCards(data) {
+  const grid = document.getElementById('listingsGrid');
+  if (!data.length) {
+    grid.innerHTML = `<div class="no-results">
+      <i class="fa fa-search"></i>
+      <h3>No listings found</h3>
+      <p>Try a different filter or search term</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = data.map(l => `
+    <div class="l-card" data-id="${l.id}">
+      <div class="card-media" onclick="openVideo(${l.id})">
+        <img
+          src="${l.img}"
+          alt="${l.name}"
+          loading="lazy"
+          onerror="this.style.background='linear-gradient(135deg,#1e3a5f,#2563EB)';this.style.display='none'">
+        <div class="media-grad"></div>
+        <div class="play-btn"><i class="fa fa-play" style="margin-left:3px"></i></div>
+        <div class="card-badges">
+          ${l.verified ? '<span class="badge badge-v"><i class="fa fa-check-circle"></i> Verified</span>' : ''}
+          ${l.trending ? '<span class="badge badge-t"><i class="fa fa-fire"></i> Trending</span>' : ''}
+        </div>
+        <div class="badge-views"><i class="fa fa-eye"></i> ${fmtNum(l.views)}</div>
+        <div class="price-tag">
+          <div class="price-main">${l.price}</div>
+          <div class="price-type">${l.roomType} · /yr</div>
+        </div>
+        <div class="interested-tag">🔥 ${l.interested} interested</div>
+      </div>
+
+      <div class="card-body">
+        <div class="card-title">${l.name}</div>
+        <div class="card-loc">
+          <i class="fa fa-map-marker-alt"></i>
+          <span>${l.distance} · ${l.street}</span>
+        </div>
+        <div class="amenity-row">
+          ${l.amenities.map(a => `
+            <span class="a-pill">
+              <i class="fa ${AMENITY_ICONS[a] || 'fa-check'}"></i>${a}
+            </span>`).join('')}
+        </div>
+        <div class="card-hr"></div>
+        <div class="agent-row">
+          <div class="agent-info">
+            <div class="av">${l.agent.initials}</div>
+            <div>
+              <div class="agent-name">${l.agent.name}</div>
+              <div class="agent-streak">🔥 ${l.agent.streak} streak</div>
+            </div>
+          </div>
+          <a href="listing-detail.html?id=${l.id}" class="btn btn-primary btn-sm">
+            Book Inspection
+          </a>
+        </div>
+      </div>
+
+      <div class="card-acts">
+        <button class="act-btn ${savedListings.includes(l.id)?'saved':''}" onclick="toggleSave(${l.id},this)">
+          <i class="fa${savedListings.includes(l.id)?'s':' far'} fa-heart"></i>
+          <span>${savedListings.includes(l.id)?'Saved':'Save'}</span>
+        </button>
+        <button class="act-btn" onclick="openShare(${l.id})">
+          <i class="fa fa-share-alt"></i><span>Share</span>
+        </button>
+        <a href="roommate.html" class="act-btn">
+          <i class="fa fa-users"></i><span>Roommate</span>
+        </a>
+      </div>
+    </div>
+  `).join('');
+}
+
+function fmtNum(n) {
+  return n >= 1000 ? (n/1000).toFixed(1).replace('.0','') + 'k' : n;
+}
+
+// =====================================================================
+// FILTER + SEARCH
+// =====================================================================
+function applyFilters() {
+  let data = [...LISTINGS];
+
+  // Search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    data = data.filter(l =>
+      l.name.toLowerCase().includes(q) ||
+      l.street.toLowerCase().includes(q) ||
+      l.area.toLowerCase().includes(q) ||
+      l.roomType.toLowerCase().includes(q)
+    );
+  }
+
+  // Pill filter
+  switch (activeFilter) {
+    case 'verified':   data = data.filter(l => l.verified); break;
+    case 'trending':   data = data.filter(l => l.trending); break;
+    case 'under100k':  data = data.filter(l => l.priceNum < 100000); break;
+    case 'neargate':   data = data.filter(l => parseFloat(l.distance) < 0.6); break;
+    case 'selfcontain':data = data.filter(l => l.roomType.toLowerCase().includes('self')); break;
+    case 'generator':  data = data.filter(l => l.amenities.includes('Generator')); break;
+  }
+
+  renderCards(data);
+}
+
+// Pill clicks
+document.getElementById('filterBar').addEventListener('click', e => {
+  const pill = e.target.closest('.pill');
+  if (!pill) return;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  pill.classList.add('active');
+  activeFilter = pill.dataset.filter;
+  applyFilters();
+});
+
+// Search inputs
+function setupSearch(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', e => {
+    searchQuery = e.target.value.trim();
+    // Sync both search inputs
+    ['desktopSearch','mobileSearch'].forEach(sid => {
+      const el2 = document.getElementById(sid);
+      if (el2 && el2 !== e.target) el2.value = searchQuery;
+    });
+    applyFilters();
+  });
+}
+setupSearch('desktopSearch');
+setupSearch('mobileSearch');
+
+// =====================================================================
+// SAVE / FAVOURITE
+// =====================================================================
+function toggleSave(id, btn) {
+  const idx = savedListings.indexOf(id);
+  if (idx === -1) {
+    savedListings.push(id);
+    btn.classList.add('saved');
+    btn.innerHTML = '<i class="fas fa-heart"></i><span>Saved</span>';
+  } else {
+    savedListings.splice(idx, 1);
+    btn.classList.remove('saved');
+    btn.innerHTML = '<i class="far fa-heart"></i><span>Save</span>';
+  }
+  localStorage.setItem('cwn_saved', JSON.stringify(savedListings));
+}
+
+// =====================================================================
+// SHARE MODAL
+// =====================================================================
+function openShare(id) {
+  activeShareListing = LISTINGS.find(l => l.id === id);
+  document.getElementById('shareOverlay').classList.add('open');
+}
+
+document.getElementById('shareClose').onclick = closeShare;
+document.getElementById('shareOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('shareOverlay')) closeShare();
+});
+function closeShare() {
+  document.getElementById('shareOverlay').classList.remove('open');
+}
+
+document.getElementById('shareRoommate').onclick = () => {
+  if (!activeShareListing) return;
+  const l = activeShareListing;
+  const url = `${window.location.origin}/listing-detail.html?id=${l.id}`;
+  const msg = `Hey! 👋 I found this hostel on CWN and I'm looking for a roommate to share it with.\n\n🏠 *${l.name}*\n📍 ${l.street}, Ogbomoso\n💰 Budget around ${l.price}/year\n🎓 Near LAUTECH gate (${l.distance})\n\nCheck it out here: ${url}\n\nHolla if you're interested! 🙌`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  closeShare();
+};
+
+document.getElementById('shareFriends').onclick = () => {
+  if (!activeShareListing) return;
+  const l = activeShareListing;
+  const url = `${window.location.origin}/listing-detail.html?id=${l.id}`;
+  const msg = `Found a 🔥 hostel on CWN — ${l.verified ? 'verified video tour, no scams' : 'check it out'}!\n\n🏠 *${l.name}* — ${l.price}/yr\n📍 ${l.distance} from LAUTECH gate\n\nCheck it out: ${url}\n\nCWN — student accommodation done right 🎓`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  closeShare();
+};
+
+// =====================================================================
+// VIDEO MODAL
+// =====================================================================
+function openVideo(id) {
+  const l = LISTINGS.find(x => x.id === id);
+  if (!l) return;
+  const overlay = document.getElementById('vidOverlay');
+  const inner = overlay.querySelector('.vid-inner');
+
+  // Try Pexels embed, fallback to styled placeholder
+  inner.innerHTML = `
+    <iframe
+      src="${l.vidSrc}"
+      width="100%" height="100%"
+      frameborder="0"
+      allow="autoplay; fullscreen"
+      allowfullscreen
+      style="width:100%;height:100%;border:none;display:block">
+    </iframe>`;
+
+  overlay.classList.add('open');
+
+  // Fallback if iframe fails — show placeholder after 3s
+  const iframe = inner.querySelector('iframe');
+  iframe.onerror = () => showVidPlaceholder(inner, l);
+
+  // Add fallback placeholder below iframe for browsers that block embeds
+  setTimeout(() => {
+    // If iframe loaded, this won't show
+  }, 100);
+}
+
+function showVidPlaceholder(inner, l) {
+  inner.innerHTML = `
+    <div class="vid-placeholder">
+      <i class="fa fa-video"></i>
+      <strong>Video Tour — ${l.name}</strong>
+      <span>Video tour loading… this will play the agent's walkthrough video.</span>
+      <span style="margin-top:0.5rem;color:rgba(255,255,255,0.4);font-size:0.75rem">
+        Agent: ${l.agent.name} · ${l.distance}
+      </span>
+    </div>`;
+}
+
+document.getElementById('vidClose').onclick = closeVideo;
+document.getElementById('vidOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('vidOverlay')) closeVideo();
+});
+function closeVideo() {
+  document.getElementById('vidOverlay').classList.remove('open');
+  // Stop video
+  const inner = document.getElementById('vidOverlay').querySelector('.vid-inner');
+  inner.innerHTML = '';
+}
+
+// =====================================================================
+// INIT
+// =====================================================================
+renderCards(LISTINGS);
+</script>
+</body>
+</html>

@@ -1,0 +1,444 @@
+<!--
+  CWN — Campus Welfare Network
+  PAGE: Signup (signup.html)
+  ===========================
+  BACKEND INTEGRATION GUIDE:
+  1. Student signup: POST /api/auth/register with {name, phone, campus, level, password, role:'student'}
+  2. Agent signup: POST /api/auth/register with {name, phone, businessName, idDoc, campusAreas, role:'agent'}
+  3. For Supabase: use supabase.auth.signUp() then insert into 'profiles' table
+  4. File upload for ID doc: use Supabase Storage bucket 'agent-documents'
+  5. After signup, redirect student to index.html, agent to agent-dashboard.html
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join CWN — Campus Welfare Network</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body { background: var(--bg); }
+    .auth-right { min-height: 100vh; }
+    .form-section { display: none; }
+    .form-section.active { display: flex; flex-direction: column; gap: 1rem; }
+    .pw-toggle { position: relative; }
+    .pw-toggle .fi { padding-right: 2.5rem; }
+    .pw-eye {
+      position: absolute; right: 0.875rem; top: 50%; transform: translateY(-50%);
+      color: var(--gray-light); cursor: pointer; font-size: 0.875rem; background: none; border: none;
+    }
+    .pw-eye:hover { color: var(--gray); }
+    .pw-strength { height: 4px; border-radius: 2px; background: var(--border); margin-top: 0.35rem; overflow: hidden; }
+    .pw-strength-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease, background 0.3s ease; width: 0%; }
+    .upload-preview { margin-top: 0.5rem; font-size: 0.78rem; color: var(--green); display: none; }
+    .upload-preview.show { display: flex; align-items: center; gap: 0.35rem; }
+    .logo-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 2rem; }
+    .form-divider { display: flex; align-items: center; gap: 0.75rem; margin: 0.5rem 0; }
+    .form-divider span { font-size: 0.78rem; color: var(--gray-light); white-space: nowrap; }
+    .form-divider::before, .form-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  </style>
+</head>
+<body>
+
+<div class="auth-wrap">
+
+  <!-- LEFT PANEL (decorative, desktop only) -->
+  <div class="auth-left">
+    <div class="logo-row">
+      <span class="nav-logo" style="color:white;font-size:1.5rem">
+        <span class="logo-box" style="background:rgba(255,255,255,0.2);color:white">CWN</span>
+      </span>
+    </div>
+
+    <h1>Find your perfect student home. 🏠</h1>
+    <p>CWN connects Nigerian students with verified, affordable accommodation — video tours, trusted agents, zero scams.</p>
+
+    <div class="auth-benefits">
+      <div class="auth-benefit">
+        <div class="ck"><i class="fa fa-check" style="font-size:0.6rem;color:white"></i></div>
+        <p>Video walkthroughs before you visit — see every room, tap, and socket.</p>
+      </div>
+      <div class="auth-benefit">
+        <div class="ck"><i class="fa fa-check" style="font-size:0.6rem;color:white"></i></div>
+        <p>Verified agents with streak scores — the more consistent, the higher the streak.</p>
+      </div>
+      <div class="auth-benefit">
+        <div class="ck"><i class="fa fa-check" style="font-size:0.6rem;color:white"></i></div>
+        <p>Built-in roommate matching — find a trustworthy coursemate to split rent with.</p>
+      </div>
+      <div class="auth-benefit">
+        <div class="ck"><i class="fa fa-check" style="font-size:0.6rem;color:white"></i></div>
+        <p>WhatsApp-first — all confirmations, reminders and updates come straight to your phone.</p>
+      </div>
+      <div class="auth-benefit">
+        <div class="ck"><i class="fa fa-check" style="font-size:0.6rem;color:white"></i></div>
+        <p>Completely free for students. Always.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;padding-top:2rem">
+      <div style="display:flex;gap:1rem;align-items:center">
+        <img src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=80&q=70&auto=format"
+          style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.4)" alt="">
+        <img src="https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=80&q=70&auto=format"
+          style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.4)" alt="">
+        <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=80&q=70&auto=format"
+          style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.4)" alt="">
+        <p style="color:rgba(255,255,255,0.8);font-size:0.82rem;margin:0">Join <strong style="color:white">2,400+</strong> students already finding their perfect hostel</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL — FORM -->
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+
+      <!-- Mobile logo -->
+      <a href="index (1).html" class="nav-logo" style="display:flex;margin-bottom:1.5rem">
+        <span class="logo-box">CWN</span>
+      </a>
+
+      <div class="auth-heading">
+        <h2>Create your account</h2>
+        <p>Already have an account? <a href="#" style="color:var(--blue);font-weight:600">Log in here</a></p>
+      </div>
+
+      <!-- TABS -->
+      <div class="auth-tabs" id="authTabs">
+        <div class="auth-tab active" data-tab="student">
+          <i class="fa fa-graduation-cap"></i> I'm a Student
+        </div>
+        <div class="auth-tab" data-tab="agent">
+          <i class="fa fa-building"></i> I'm an Agent
+        </div>
+      </div>
+
+      <!-- ===== STUDENT FORM ===== -->
+      <form id="studentForm" novalidate>
+        <div class="form-section active" id="studentFields">
+
+          <div class="fg">
+            <label class="fl" for="sName">Full Name <span>*</span></label>
+            <input class="fi" id="sName" type="text" placeholder="e.g. Chukwuemeka Adeyemi" autocomplete="name">
+            <span class="fe" id="sName-err">Please enter your full name</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="sPhone">Phone Number <span>*</span></label>
+            <span class="fn">📱 Used for WhatsApp inspection confirmations</span>
+            <input class="fi" id="sPhone" type="tel" placeholder="08012345678" autocomplete="tel">
+            <span class="fe" id="sPhone-err">Enter a valid Nigerian phone number</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="sCampus">University Campus <span>*</span></label>
+            <select class="fs" id="sCampus">
+              <option value="">Select your campus…</option>
+              <option value="lautech">LAUTECH — Ogbomoso</option>
+              <option value="ui">UI — Ibadan</option>
+              <option value="oau">OAU — Ile-Ife</option>
+              <option value="uniport">UNIPORT — Port Harcourt</option>
+              <option value="abu">ABU — Zaria</option>
+              <option value="futa">FUTA — Akure</option>
+              <option value="unilag">UNILAG — Lagos</option>
+              <option value="uniben">UNIBEN — Benin City</option>
+              <option value="other">Other University</option>
+            </select>
+            <span class="fe" id="sCampus-err">Please select your campus</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="sLevel">Current Level <span>*</span></label>
+            <select class="fs" id="sLevel">
+              <option value="">Select level…</option>
+              <option value="100">100 Level</option>
+              <option value="200">200 Level</option>
+              <option value="300">300 Level</option>
+              <option value="400">400 Level</option>
+              <option value="500">500 Level</option>
+              <option value="pg">Postgraduate</option>
+            </select>
+            <span class="fe" id="sLevel-err">Please select your level</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="sPass">Password <span>*</span></label>
+            <div class="pw-toggle">
+              <input class="fi" id="sPass" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+              <button type="button" class="pw-eye" onclick="togglePw('sPass',this)"><i class="fa fa-eye"></i></button>
+            </div>
+            <div class="pw-strength"><div class="pw-strength-fill" id="sPassStrength"></div></div>
+            <span class="fe" id="sPass-err">Password must be at least 8 characters</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="sPass2">Confirm Password <span>*</span></label>
+            <div class="pw-toggle">
+              <input class="fi" id="sPass2" type="password" placeholder="Repeat your password" autocomplete="new-password">
+              <button type="button" class="pw-eye" onclick="togglePw('sPass2',this)"><i class="fa fa-eye"></i></button>
+            </div>
+            <span class="fe" id="sPass2-err">Passwords do not match</span>
+          </div>
+
+          <div id="sSuccess"></div>
+
+          <button type="submit" class="btn btn-primary btn-full btn-xl">
+            <i class="fa fa-user-graduate"></i> Sign Up as Student
+          </button>
+
+          <p style="text-align:center;font-size:0.78rem;color:var(--gray-light)">
+            By signing up, you agree to our <a href="#" style="color:var(--blue)">Terms of Service</a> and <a href="#" style="color:var(--blue)">Privacy Policy</a>
+          </p>
+
+        </div>
+      </form>
+
+      <!-- ===== AGENT FORM ===== -->
+      <form id="agentForm" novalidate style="display:none">
+        <div class="form-section active" id="agentFields">
+
+          <div class="fg">
+            <label class="fl" for="aName">Full Name <span>*</span></label>
+            <input class="fi" id="aName" type="text" placeholder="e.g. Mr. Adeyemi Oladele" autocomplete="name">
+            <span class="fe" id="aName-err">Please enter your full name</span>
+          </div>
+
+          <div class="form-row">
+            <div class="fg">
+              <label class="fl" for="aPhone">Phone Number <span>*</span></label>
+              <input class="fi" id="aPhone" type="tel" placeholder="08012345678">
+              <span class="fe" id="aPhone-err">Enter a valid number</span>
+            </div>
+            <div class="fg">
+              <label class="fl" for="aWA">WhatsApp Number</label>
+              <span class="fn">If different from phone</span>
+              <input class="fi" id="aWA" type="tel" placeholder="08012345678">
+            </div>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="aBusiness">Business Name</label>
+            <span class="fn">Optional — shown on your listings</span>
+            <input class="fi" id="aBusiness" type="text" placeholder="e.g. Adeyemi Properties">
+          </div>
+
+          <div class="fg">
+            <label class="fl">Government ID <span>*</span></label>
+            <span class="fn">Accepted: National ID, Voter's Card, Driver's Licence, Passport</span>
+            <div class="upload-box" id="idUploadBox" onclick="document.getElementById('idFile').click()">
+              <i class="fa fa-id-card"></i>
+              <strong>Upload ID Document</strong>
+              <small>JPG, PNG or PDF · Max 5MB</small>
+            </div>
+            <input type="file" id="idFile" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="handleIDUpload(this)">
+            <div class="upload-preview" id="idPreview">
+              <i class="fa fa-check-circle"></i><span></span>
+            </div>
+            <span class="fe" id="aId-err">Please upload a valid government ID</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl">Campus Areas You Manage <span>*</span></label>
+            <div class="cb-row">
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="lautech"> <label>LAUTECH, Ogbomoso</label></label>
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="ui"> <label>UI, Ibadan</label></label>
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="oau"> <label>OAU, Ile-Ife</label></label>
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="uniport"> <label>UNIPORT</label></label>
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="abu"> <label>ABU, Zaria</label></label>
+              <label class="cb-item"><input type="checkbox" name="campusArea" value="futa"> <label>FUTA</label></label>
+            </div>
+            <span class="fe" id="aArea-err">Select at least one campus area</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="aPass">Password <span>*</span></label>
+            <div class="pw-toggle">
+              <input class="fi" id="aPass" type="password" placeholder="Min. 8 characters">
+              <button type="button" class="pw-eye" onclick="togglePw('aPass',this)"><i class="fa fa-eye"></i></button>
+            </div>
+            <span class="fe" id="aPass-err">Password must be at least 8 characters</span>
+          </div>
+
+          <div class="fg">
+            <label class="fl" for="aPass2">Confirm Password <span>*</span></label>
+            <div class="pw-toggle">
+              <input class="fi" id="aPass2" type="password" placeholder="Repeat your password">
+              <button type="button" class="pw-eye" onclick="togglePw('aPass2',this)"><i class="fa fa-eye"></i></button>
+            </div>
+            <span class="fe" id="aPass2-err">Passwords do not match</span>
+          </div>
+
+          <div id="aSuccess"></div>
+
+          <button type="submit" class="btn btn-primary btn-full btn-xl">
+            <i class="fa fa-building"></i> Sign Up as Agent
+          </button>
+
+          <div style="background:var(--amber-tint);border:1px solid #FDE68A;border-radius:var(--radius-sm);padding:0.875rem;font-size:0.8rem;color:#92400E">
+            <i class="fa fa-clock"></i> <strong>Review Process:</strong> Your account will be reviewed and activated within 24 hours. You'll get a WhatsApp notification once approved.
+          </div>
+
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<script>
+let idFileSelected = false;
+
+// Tab switching
+document.getElementById('authTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.auth-tab');
+  if (!tab) return;
+  const t = tab.dataset.tab;
+  document.querySelectorAll('.auth-tab').forEach(x => x.classList.remove('active'));
+  tab.classList.add('active');
+  if (t === 'student') {
+    document.getElementById('studentForm').style.display = '';
+    document.getElementById('agentForm').style.display = 'none';
+  } else {
+    document.getElementById('studentForm').style.display = 'none';
+    document.getElementById('agentForm').style.display = '';
+  }
+});
+
+// Password toggle
+function togglePw(id, btn) {
+  const inp = document.getElementById(id);
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.innerHTML = '<i class="fa fa-eye-slash"></i>';
+  } else {
+    inp.type = 'password';
+    btn.innerHTML = '<i class="fa fa-eye"></i>';
+  }
+}
+
+// Password strength
+document.getElementById('sPass').addEventListener('input', function() {
+  const v = this.value;
+  const bar = document.getElementById('sPassStrength');
+  let strength = 0;
+  if (v.length >= 8) strength++;
+  if (/[A-Z]/.test(v)) strength++;
+  if (/[0-9]/.test(v)) strength++;
+  if (/[^A-Za-z0-9]/.test(v)) strength++;
+  const colors = ['','var(--red)','var(--amber)','var(--amber)','var(--green)'];
+  bar.style.width = (strength * 25) + '%';
+  bar.style.background = colors[strength] || 'var(--border)';
+});
+
+// ID upload
+function handleIDUpload(input) {
+  if (input.files && input.files[0]) {
+    const f = input.files[0];
+    if (f.size > 5 * 1024 * 1024) {
+      alert('File too large. Max 5MB.');
+      return;
+    }
+    idFileSelected = true;
+    const prev = document.getElementById('idPreview');
+    prev.classList.add('show');
+    prev.querySelector('span').textContent = f.name;
+    document.getElementById('idUploadBox').style.borderColor = 'var(--green)';
+    document.getElementById('idUploadBox').style.background = 'var(--green-tint)';
+  }
+}
+
+// Validation helpers
+function setErr(id, msg, show) {
+  const inp = document.getElementById(id);
+  const err = document.getElementById(id + '-err');
+  if (inp) inp.classList.toggle('err', show);
+  if (err) {
+    if (msg) err.textContent = msg;
+    err.classList.toggle('show', show);
+  }
+  return !show;
+}
+
+function validatePhone(v) {
+  return /^(\+234|0)[789][01]\d{8}$/.test(v.replace(/\s/g, ''));
+}
+
+// STUDENT FORM SUBMIT
+document.getElementById('studentForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  let ok = true;
+  const name = document.getElementById('sName').value.trim();
+  const phone = document.getElementById('sPhone').value.trim();
+  const campus = document.getElementById('sCampus').value;
+  const level = document.getElementById('sLevel').value;
+  const pass = document.getElementById('sPass').value;
+  const pass2 = document.getElementById('sPass2').value;
+
+  ok = setErr('sName', 'Please enter your full name', !name || name.split(' ').length < 2) && ok;
+  ok = setErr('sPhone', 'Enter a valid Nigerian number (080xxxxxxxx)', !validatePhone(phone)) && ok;
+  ok = setErr('sCampus', 'Please select your campus', !campus) && ok;
+  ok = setErr('sLevel', 'Please select your level', !level) && ok;
+  ok = setErr('sPass', 'Password must be at least 8 characters', pass.length < 8) && ok;
+  ok = setErr('sPass2', 'Passwords do not match', pass !== pass2) && ok;
+
+  if (ok) {
+    const btn = this.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Creating account…';
+    setTimeout(() => {
+      document.getElementById('sSuccess').innerHTML = `
+        <div class="fsuccess">
+          <i class="fa fa-check-circle"></i>
+          Account created successfully! Redirecting to your dashboard…
+        </div>`;
+      setTimeout(() => { window.location.href = 'index (1).html'; }, 2000);
+    }, 1500);
+  }
+});
+
+// AGENT FORM SUBMIT
+document.getElementById('agentForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  let ok = true;
+  const name = document.getElementById('aName').value.trim();
+  const phone = document.getElementById('aPhone').value.trim();
+  const pass = document.getElementById('aPass').value;
+  const pass2 = document.getElementById('aPass2').value;
+  const areas = document.querySelectorAll('input[name=campusArea]:checked');
+
+  ok = setErr('aName', 'Please enter your full name', !name || name.split(' ').length < 2) && ok;
+  ok = setErr('aPhone', 'Enter a valid Nigerian number', !validatePhone(phone)) && ok;
+  ok = setErr('aId', 'Please upload a valid government ID', !idFileSelected) && ok;
+  ok = setErr('aArea', 'Select at least one campus area', areas.length === 0) && ok;
+  ok = setErr('aPass', 'Password must be at least 8 characters', pass.length < 8) && ok;
+  ok = setErr('aPass2', 'Passwords do not match', pass !== pass2) && ok;
+
+  if (ok) {
+    const btn = this.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Submitting…';
+    setTimeout(() => {
+      document.getElementById('aSuccess').innerHTML = `
+        <div class="fsuccess">
+          <i class="fa fa-check-circle"></i>
+          Application submitted! You'll get a WhatsApp message within 24 hours once approved.
+        </div>`;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa fa-building"></i> Sign Up as Agent';
+    }, 1500);
+  }
+});
+
+// Real-time validation clear
+['sName','sPhone','sCampus','sLevel','sPass','sPass2','aName','aPhone','aPass','aPass2'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => {
+    el.classList.remove('err');
+    const err = document.getElementById(id + '-err');
+    if (err) err.classList.remove('show');
+  });
+});
+</script>
+</body>
+</html>

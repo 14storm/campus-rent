@@ -1,0 +1,922 @@
+<!--
+==========================================================
+  CWN — Campus Welfare Network
+  PAGE: Roommate Matching (roommate.html)
+==========================================================
+  WHAT THIS PAGE DOES:
+  A feed of roommate-request posts where students who have
+  found (or are looking for) a hostel can find others to
+  split rent with. Filter by gender preference, budget,
+  and availability. Post your own request via the form.
+
+  BACKEND INTEGRATION (Supabase):
+  ─────────────────────────────────
+  • Fetch posts:   SELECT * FROM roommate_posts ORDER BY created_at DESC
+  • Create post:   INSERT INTO roommate_posts (...) VALUES (...)
+  • Save post:     INSERT INTO saved_roommate_posts (user_id, post_id) VALUES (...)
+  • Filter:        WHERE gender_pref = 'female' AND budget_max <= 80000
+  • Real-time:     supabase.channel('roommate_posts').on('INSERT', ...)
+==========================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Find a Roommate — CWN</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── Page-specific styles ── */
+    body { background: #F8FAFC; }
+
+    /* ── Hero ── */
+    .rm-hero {
+      background: linear-gradient(135deg, #1E40AF 0%, #2563EB 50%, #0EA5E9 100%);
+      color: #fff;
+      margin-top: var(--nav-h, 60px);
+      padding: 52px 24px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .rm-hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 220px; height: 220px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 50%;
+    }
+    .rm-hero::after {
+      content: '';
+      position: absolute;
+      bottom: -40px; left: -40px;
+      width: 160px; height: 160px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 50%;
+    }
+    .rm-hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 800;
+      margin: 0 0 10px;
+      position: relative;
+      z-index: 1;
+    }
+    .rm-hero p {
+      font-size: 0.95rem;
+      opacity: 0.88;
+      max-width: 480px;
+      margin: 0 auto 22px;
+      position: relative;
+      z-index: 1;
+    }
+    .btn-post-request {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      color: #2563EB;
+      padding: 12px 26px;
+      border-radius: 99px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+      position: relative;
+      z-index: 1;
+    }
+    .btn-post-request:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    .btn-post-request:active { transform: scale(0.97); }
+
+    /* ── Stats row ── */
+    .rm-stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-top: 28px;
+      position: relative;
+      z-index: 1;
+      flex-wrap: wrap;
+    }
+    .rm-stat { text-align: center; }
+    .rm-stat .num { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; line-height: 1; }
+    .rm-stat .lbl { font-size: 0.72rem; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+    /* ── Filter bar ── */
+    .rm-filter-bar {
+      padding: 14px 24px;
+      background: #fff;
+      border-bottom: 1px solid #E2E8F0;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .rm-filter-bar::-webkit-scrollbar { display: none; }
+    .rm-pill {
+      flex-shrink: 0;
+      padding: 7px 16px;
+      border-radius: 99px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid #2563EB;
+      background: #fff;
+      color: #2563EB;
+      transition: all 0.18s;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .rm-pill.active { background: #2563EB; color: #fff; }
+    .rm-pill:hover:not(.active) { background: #EFF6FF; }
+
+    /* ── Content area ── */
+    .rm-content {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 20px;
+    }
+    .rm-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .rm-section-header h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #0F172A;
+    }
+    .rm-count {
+      font-size: 0.78rem;
+      color: #64748B;
+      background: #F1F5F9;
+      padding: 4px 10px;
+      border-radius: 99px;
+    }
+
+    /* ── Card Grid ── */
+    .rm-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    @media (max-width: 900px) { .rm-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .rm-grid { grid-template-columns: 1fr; } }
+
+    /* ── Roommate Card ── */
+    .rm-card {
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-left: 4px solid #2563EB;
+      border-radius: 12px;
+      padding: 18px 18px 14px;
+      transition: box-shadow 0.2s, transform 0.18s;
+      animation: fadeUp 0.3s ease both;
+    }
+    .rm-card:hover {
+      box-shadow: 0 6px 22px rgba(37,99,235,0.1);
+      transform: translateY(-2px);
+    }
+    @keyframes fadeUp {
+      from { opacity:0; transform: translateY(12px); }
+      to { opacity:1; transform: translateY(0); }
+    }
+    .rm-card-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .rm-av {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2563EB, #0EA5E9);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+    .rm-av-info { flex: 1; }
+    .rm-av-name { font-weight: 700; font-size: 0.88rem; color: #0F172A; }
+    .rm-av-meta { font-size: 0.75rem; color: #64748B; margin-top: 2px; }
+    .rm-posted { font-size: 0.7rem; color: #94A3B8; margin-top: 1px; }
+
+    /* ── Badge row ── */
+    .rm-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .rm-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .rm-badge-blue { background: #DBEAFE; color: #1D4ED8; }
+    .rm-badge-green { background: #D1FAE5; color: #059669; }
+    .rm-badge-amber { background: #FEF3C7; color: #B45309; }
+    .rm-badge-purple { background: #EDE9FE; color: #7C3AED; }
+    .rm-badge-pink { background: #FCE7F3; color: #9D174D; }
+    .rm-badge-gray { background: #F1F5F9; color: #475569; }
+
+    /* ── Lifestyle tags ── */
+    .rm-lifestyle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    .rm-tag {
+      padding: 3px 9px;
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 99px;
+      font-size: 0.7rem;
+      color: #475569;
+      font-weight: 500;
+    }
+
+    /* ── Description ── */
+    .rm-desc {
+      font-size: 0.82rem;
+      color: #475569;
+      line-height: 1.55;
+      margin-bottom: 14px;
+    }
+
+    /* ── Card footer ── */
+    .rm-card-footer {
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid #F1F5F9;
+      padding-top: 12px;
+    }
+    .btn-wa {
+      flex: 1;
+      padding: 9px 0;
+      background: #22C55E;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.18s;
+    }
+    .btn-wa:hover { background: #16A34A; }
+    .btn-save {
+      padding: 9px 14px;
+      background: #F1F5F9;
+      color: #475569;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.18s;
+    }
+    .btn-save:hover { background: #EFF6FF; color: #2563EB; }
+    .btn-save.saved { background: #EFF6FF; color: #2563EB; }
+    .btn-save.saved i { color: #2563EB; }
+
+    /* ── Empty state ── */
+    .rm-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: #94A3B8;
+    }
+    .rm-empty i { font-size: 3rem; margin-bottom: 14px; }
+    .rm-empty p { font-size: 0.9rem; }
+
+    /* ── Post Form Panel ── */
+    .rm-form-section {
+      max-width: 680px;
+      margin: 0 auto 60px;
+      display: none;
+    }
+    .rm-form-section.open { display: block; animation: slideDown 0.25s ease; }
+    @keyframes slideDown {
+      from { opacity:0; transform:translateY(-10px); }
+      to { opacity:1; transform:translateY(0); }
+    }
+    .form-card {
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      padding: 28px 28px 32px;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.06);
+    }
+    .form-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #0F172A;
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .form-card h2 i { color: #2563EB; }
+    .form-card .form-sub { font-size: 0.8rem; color: #64748B; margin-bottom: 22px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } }
+    .fgroup { margin-bottom: 16px; }
+    .fgroup label { display: block; font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .fgroup input,
+    .fgroup select,
+    .fgroup textarea {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      color: #0F172A;
+      background: #fff;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .fgroup textarea { height: 88px; padding: 10px 12px; resize: vertical; }
+    .fgroup input:focus, .fgroup select:focus, .fgroup textarea:focus {
+      border-color: #2563EB;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .fgroup .err { font-size: 0.74rem; color: #DC2626; margin-top: 4px; display: none; }
+    .fgroup.has-err input, .fgroup.has-err select, .fgroup.has-err textarea { border-color: #DC2626; }
+    .fgroup.has-err .err { display: block; }
+
+    /* ── Lifestyle checkbox group ── */
+    .lifestyle-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .ls-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #374151;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ls-item input { width: auto; height: auto; accent-color: #2563EB; }
+    .ls-item:has(input:checked) { background: #EFF6FF; border-color: #2563EB; color: #2563EB; }
+
+    .btn-submit {
+      width: 100%;
+      padding: 13px;
+      background: #2563EB;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background 0.18s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-submit:hover { background: #1D4ED8; }
+    .btn-submit:active { transform: scale(0.98); }
+    .success-msg {
+      display: none;
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #D1FAE5;
+      border: 1px solid #6EE7B7;
+      border-radius: 8px;
+      color: #065F46;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-align: center;
+      animation: fadeUp 0.3s ease;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 560px) {
+      .form-card { padding: 20px 16px 24px; }
+      .rm-hero { padding: 36px 16px 30px; }
+      .rm-stats { gap: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a href="index (1).html" class="nav-logo">
+      <span class="logo-box">CWN</span>
+    
+    </a>
+    <div style="flex:1;"></div>
+    <div class="nav-actions">
+      <a href="index (1).html" class="btn btn-ghost btn-sm">
+        <i class="fa fa-arrow-left"></i> Feed
+      </a>
+      <a href="signup.html" class="btn btn-primary btn-sm">Sign Up</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="rm-hero">
+    <h1>🤝 Find Your Perfect Roommate</h1>
+    <p>Split rent with a trustworthy coursemate. Real students, verified listings, LAUTECH Ogbomoso.</p>
+    <button class="btn-post-request" id="btnPostRequest">
+      <i class="fa fa-plus"></i> Post Your Request
+    </button>
+    <div class="rm-stats">
+      <div class="rm-stat"><div class="num">24</div><div class="lbl">Open Requests</div></div>
+      <div class="rm-stat"><div class="num">68</div><div class="lbl">Matches Made</div></div>
+      <div class="rm-stat"><div class="num">₦40k</div><div class="lbl">Avg. Savings/Person</div></div>
+    </div>
+  </section>
+
+  <!-- Filter Bar -->
+  <div class="rm-filter-bar" id="filterBar">
+    <button class="rm-pill active" data-filter="all"><i class="fa fa-th"></i> All Posts</button>
+    <button class="rm-pill" data-filter="male"><i class="fa fa-mars"></i> Looking for Male</button>
+    <button class="rm-pill" data-filter="female"><i class="fa fa-venus"></i> Looking for Female</button>
+    <button class="rm-pill" data-filter="budget"><i class="fa fa-naira-sign"></i> Under ₦80k Budget</button>
+    <button class="rm-pill" data-filter="available"><i class="fa fa-circle-check"></i> Available Now</button>
+  </div>
+
+  <!-- Content -->
+  <div class="rm-content">
+
+    <!-- Post Form (hidden by default) -->
+    <div class="rm-form-section" id="rmFormSection">
+      <div class="form-card" id="rmFormCard">
+        <h2><i class="fa fa-pen-to-square"></i> Post a Roommate Request</h2>
+        <div class="form-sub">Students looking for the same hostel can reach you directly on WhatsApp.</div>
+
+        <div class="form-row">
+          <div class="fgroup" id="fg-budgetMin">
+            <label>Min Budget (₦/yr) *</label>
+            <input type="number" id="f-budgetMin" placeholder="e.g. 50000"/>
+            <div class="err">Please enter a minimum budget</div>
+          </div>
+          <div class="fgroup" id="fg-budgetMax">
+            <label>Max Budget (₦/yr) *</label>
+            <input type="number" id="f-budgetMax" placeholder="e.g. 90000"/>
+            <div class="err">Please enter a maximum budget</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="fgroup" id="fg-area">
+            <label>Preferred Area / Street *</label>
+            <input type="text" id="f-area" placeholder="e.g. Oke-Ola Street"/>
+            <div class="err">Please enter a preferred area</div>
+          </div>
+          <div class="fgroup" id="fg-timeline">
+            <label>Move-In Timeline *</label>
+            <select id="f-timeline">
+              <option value="">Select timeline</option>
+              <option>ASAP (this week)</option>
+              <option>Within 2 weeks</option>
+              <option>Next month</option>
+              <option>Next semester</option>
+              <option>Flexible</option>
+            </select>
+            <div class="err">Please select a timeline</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="fgroup" id="fg-gender">
+            <label>Gender Preference *</label>
+            <select id="f-gender">
+              <option value="">Select preference</option>
+              <option value="male">Male only</option>
+              <option value="female">Female only</option>
+              <option value="any">No preference</option>
+            </select>
+            <div class="err">Please select a gender preference</div>
+          </div>
+          <div class="fgroup">
+            <label>Number of Roommates Needed</label>
+            <select id="f-count">
+              <option>1</option>
+              <option>2</option>
+              <option>3+</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <label>Your Lifestyle (tick all that apply)</label>
+          <div class="lifestyle-group">
+            <label class="ls-item"><input type="checkbox" value="Night Student"/> 🌙 Night Student</label>
+            <label class="ls-item"><input type="checkbox" value="Early Riser"/> 🌅 Early Riser</label>
+            <label class="ls-item"><input type="checkbox" value="Clean &amp; Organized"/> 🧹 Clean & Organized</label>
+            <label class="ls-item"><input type="checkbox" value="Quiet"/> 🤫 Quiet</label>
+            <label class="ls-item"><input type="checkbox" value="Social"/> 😄 Social</label>
+            <label class="ls-item"><input type="checkbox" value="Reads often"/> 📚 Reads Often</label>
+            <label class="ls-item"><input type="checkbox" value="No visitors"/> 🚫 No Visitors Policy</label>
+            <label class="ls-item"><input type="checkbox" value="Religious"/> 🙏 Religious</label>
+          </div>
+        </div>
+
+        <div class="fgroup" id="fg-desc">
+          <label>Tell us about yourself (optional)</label>
+          <textarea id="f-desc" placeholder="e.g. I'm a 300-level MechEng student, very neat, I cook at home, I study late but I use earphones. Looking for someone with similar vibe."></textarea>
+        </div>
+
+        <div class="fgroup" id="fg-phone">
+          <label>Your WhatsApp Number *</label>
+          <input type="tel" id="f-phone" placeholder="e.g. 08031234567"/>
+          <div class="err">Please enter a valid phone number</div>
+        </div>
+
+        <button class="btn-submit" onclick="submitRoommatePost()">
+          <i class="fa fa-paper-plane"></i> Post Request
+        </button>
+        <div class="success-msg" id="formSuccess">
+          <i class="fa fa-circle-check"></i> Your roommate request has been posted! Students will reach you on WhatsApp.
+        </div>
+      </div>
+    </div>
+
+    <!-- Feed header -->
+    <div class="rm-section-header">
+      <h2>Roommate Requests</h2>
+      <span class="rm-count" id="rmCount">Showing all posts</span>
+    </div>
+
+    <!-- Grid -->
+    <div class="rm-grid" id="rmGrid"></div>
+  </div>
+
+  <!-- Footer -->
+  <footer style="background:#0F172A;color:#94A3B8;text-align:center;padding:28px 20px;font-size:0.8rem;">
+    <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;color:#fff;margin-bottom:6px;">CWN</div>
+    <div>Campus Welfare Network · LAUTECH Ogbomoso · Nigeria</div>
+    <div style="margin-top:10px;">
+      <a href="index (1).html" style="color:#64748B;text-decoration:none;margin:0 10px;">Listings</a>
+      <a href="roommate.html" style="color:#2563EB;text-decoration:none;margin:0 10px;">Roommate</a>
+      <a href="signup.html" style="color:#64748B;text-decoration:none;margin:0 10px;">Sign Up</a>
+    </div>
+  </footer>
+
+  <!-- Mobile bottom nav -->
+  <nav class="mobile-bottom-nav">
+    <a href="index (1).html" class="mob-nav-item">
+      <i class="fa fa-house"></i><span>Feed</span>
+    </a>
+    <a href="index (1).html" class="mob-nav-item">
+      <i class="fa fa-magnifying-glass"></i><span>Search</span>
+    </a>
+    <a href="roommate.html" class="mob-nav-item active">
+      <i class="fa fa-people-group"></i><span>Roommate</span>
+    </a>
+    <a href="signup.html" class="mob-nav-item">
+      <i class="fa fa-circle-user"></i><span>Profile</span>
+    </a>
+  </nav>
+
+<script>
+// ── Sample Data ──────────────────────────────────────────────
+const POSTS = [
+  {
+    id: 1,
+    initials: "CO",
+    name: "Chidinma O.",
+    level: "300L",
+    campus: "LAUTECH",
+    posted: "2 hours ago",
+    budgetMin: 60000,
+    budgetMax: 90000,
+    area: "Oke-Ola Street",
+    timeline: "ASAP (this week)",
+    genderPref: "female",
+    roommatesNeeded: 1,
+    lifestyle: ["Night Student", "Clean & Organized", "Quiet"],
+    desc: "I'm a 300-level Biochemistry student, very neat and organised. I study at night but I use earphones and keep things quiet. Looking for a serious female student to split a self-contain or single room near LAUTECH gate.",
+    phone: "08031112233",
+    available: true
+  },
+  {
+    id: 2,
+    initials: "TA",
+    name: "Tunde A.",
+    level: "200L",
+    campus: "LAUTECH",
+    posted: "5 hours ago",
+    budgetMin: 40000,
+    budgetMax: 75000,
+    area: "Arowomole Area",
+    timeline: "Within 2 weeks",
+    genderPref: "male",
+    roommatesNeeded: 2,
+    lifestyle: ["Early Riser", "Reads often", "Religious"],
+    desc: "200-level Civil Engineering student. I go to bed early and wake up early. Looking for two other guys to share a 3-bedroom flat somewhere around Arowomole. I cook and I don't bring loud visitors.",
+    phone: "08054443322",
+    available: true
+  },
+  {
+    id: 3,
+    initials: "AM",
+    name: "Aisha M.",
+    level: "400L",
+    campus: "LAUTECH",
+    posted: "1 day ago",
+    budgetMin: 70000,
+    budgetMax: 100000,
+    area: "Takie Area",
+    timeline: "Next month",
+    genderPref: "female",
+    roommatesNeeded: 1,
+    lifestyle: ["Social", "Clean & Organized", "No visitors"],
+    desc: "Final year student who wants a clean, drama-free female roommate. I prefer somewhere near Takie Area with a generator. Must be serious about school. Bonus if you also cook because we can share chores.",
+    phone: "07065556677",
+    available: false
+  },
+  {
+    id: 4,
+    initials: "EN",
+    name: "Emeka N.",
+    level: "100L",
+    campus: "LAUTECH",
+    posted: "2 days ago",
+    budgetMin: 35000,
+    budgetMax: 60000,
+    area: "Oke-Ola Street",
+    timeline: "ASAP (this week)",
+    genderPref: "male",
+    roommatesNeeded: 1,
+    lifestyle: ["Night Student", "Social", "Reads often"],
+    desc: "Fresh 100-level Mechanical Engineering student. Just got admitted and looking for a roommate ASAP. Budget is tight so I need someone willing to share cost. I'm easy-going and keep my space clean.",
+    phone: "09047778899",
+    available: true
+  },
+  {
+    id: 5,
+    initials: "FA",
+    name: "Fatima B.",
+    level: "500L",
+    campus: "LAUTECH",
+    posted: "3 days ago",
+    budgetMin: 65000,
+    budgetMax: 95000,
+    area: "Sabo Area",
+    timeline: "Next semester",
+    genderPref: "female",
+    roommatesNeeded: 1,
+    lifestyle: ["Quiet", "Reads often", "Religious"],
+    desc: "500-level MedPharm student preparing for final year. I need a calm, focused female roommate who understands I'll be reading a lot. Somewhere around Sabo or Oke-Ola preferred — must have stable electricity.",
+    phone: "08029990011",
+    available: true
+  },
+  {
+    id: 6,
+    initials: "JO",
+    name: "James O.",
+    level: "300L",
+    campus: "LAUTECH",
+    posted: "4 days ago",
+    budgetMin: 45000,
+    budgetMax: 80000,
+    area: "Imalefalafel Road",
+    timeline: "Within 2 weeks",
+    genderPref: "male",
+    roommatesNeeded: 2,
+    lifestyle: ["Early Riser", "Clean & Organized", "Social"],
+    desc: "Looking for 2 guys to share a 3-room flat. I already have one person coming in, we need one more. Must be clean and responsible. We're all 300L, different departments. House rules we'll agree together.",
+    phone: "08116661122",
+    available: true
+  }
+];
+
+// ── Filter state ─────────────────────────────────────────────
+let activeFilter = "all";
+
+// ── Render cards ─────────────────────────────────────────────
+function renderPosts(posts) {
+  const grid = document.getElementById("rmGrid");
+  grid.innerHTML = "";
+
+  if (!posts.length) {
+    grid.innerHTML = `<div class="rm-empty" style="grid-column:1/-1;">
+      <i class="fa fa-people-arrows"></i>
+      <p>No roommate posts match your filter.</p>
+    </div>`;
+    document.getElementById("rmCount").textContent = "0 posts found";
+    return;
+  }
+
+  document.getElementById("rmCount").textContent = `Showing ${posts.length} post${posts.length===1?'':'s'}`;
+
+  posts.forEach((p, i) => {
+    const budgetLabel = `₦${(p.budgetMin/1000).toFixed(0)}k – ₦${(p.budgetMax/1000).toFixed(0)}k /yr`;
+    const genderLabel = p.genderPref === "male" ? "♂ Male only" : p.genderPref === "female" ? "♀ Female only" : "Any gender";
+    const genderClass = p.genderPref === "male" ? "rm-badge-blue" : p.genderPref === "female" ? "rm-badge-pink" : "rm-badge-gray";
+
+    const lifestyleTags = p.lifestyle.map(t => `<span class="rm-tag">${t}</span>`).join("");
+    const savedKey = `rm-saved-${p.id}`;
+    const isSaved = localStorage.getItem(savedKey) === "1";
+
+    const card = document.createElement("div");
+    card.className = "rm-card";
+    card.style.animationDelay = `${i * 0.05}s`;
+    card.innerHTML = `
+      <div class="rm-card-head">
+        <div class="rm-av">${p.initials}</div>
+        <div class="rm-av-info">
+          <div class="rm-av-name">${p.name}</div>
+          <div class="rm-av-meta">${p.level} · ${p.campus}</div>
+          <div class="rm-posted"><i class="fa fa-clock" style="color:#94A3B8;"></i> ${p.posted}</div>
+        </div>
+        ${p.available ? '<span style="background:#D1FAE5;color:#059669;font-size:0.68rem;font-weight:700;padding:3px 9px;border-radius:99px;flex-shrink:0;">● Available</span>' : ''}
+      </div>
+      <div class="rm-badges">
+        <span class="rm-badge rm-badge-green"><i class="fa fa-naira-sign"></i> ${budgetLabel}</span>
+        <span class="rm-badge ${genderClass}">${genderLabel}</span>
+        <span class="rm-badge rm-badge-amber"><i class="fa fa-location-dot"></i> ${p.area}</span>
+        <span class="rm-badge rm-badge-purple"><i class="fa fa-clock-rotate-left"></i> ${p.timeline}</span>
+        <span class="rm-badge rm-badge-gray"><i class="fa fa-user-group"></i> Need ${p.roommatesNeeded}</span>
+      </div>
+      <div class="rm-lifestyle">${lifestyleTags}</div>
+      <div class="rm-desc">${p.desc}</div>
+      <div class="rm-card-footer">
+        <button class="btn-wa" onclick="contactWA('${p.phone}','${p.name}','${p.area}')">
+          <i class="fa-brands fa-whatsapp"></i> Contact on WhatsApp
+        </button>
+        <button class="btn-save ${isSaved?'saved':''}" id="save-${p.id}" onclick="toggleSave(${p.id})">
+          <i class="fa${isSaved?'-solid':'-regular'} fa-heart"></i> ${isSaved?'Saved':'Save'}
+        </button>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── Filter logic ─────────────────────────────────────────────
+function applyFilter(filter) {
+  activeFilter = filter;
+  let filtered = [...POSTS];
+  if (filter === "male") filtered = POSTS.filter(p => p.genderPref === "male");
+  else if (filter === "female") filtered = POSTS.filter(p => p.genderPref === "female");
+  else if (filter === "budget") filtered = POSTS.filter(p => p.budgetMax <= 80000);
+  else if (filter === "available") filtered = POSTS.filter(p => p.available);
+  renderPosts(filtered);
+}
+
+document.querySelectorAll(".rm-pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".rm-pill").forEach(p => p.classList.remove("active"));
+    pill.classList.add("active");
+    applyFilter(pill.dataset.filter);
+  });
+});
+
+// ── Save / Unsave ─────────────────────────────────────────────
+function toggleSave(id) {
+  const key = `rm-saved-${id}`;
+  const btn = document.getElementById(`save-${id}`);
+  const saved = localStorage.getItem(key) === "1";
+  if (saved) {
+    localStorage.removeItem(key);
+    btn.className = "btn-save";
+    btn.innerHTML = `<i class="fa-regular fa-heart"></i> Save`;
+  } else {
+    localStorage.setItem(key, "1");
+    btn.className = "btn-save saved";
+    btn.innerHTML = `<i class="fa-solid fa-heart"></i> Saved`;
+  }
+}
+
+// ── WhatsApp contact ──────────────────────────────────────────
+function contactWA(phone, name, area) {
+  const clean = phone.replace(/\D/g, "");
+  const num = clean.startsWith("0") ? "234" + clean.slice(1) : clean;
+  const msg = encodeURIComponent(`Hi ${name}! I saw your roommate request on CWN for a place around ${area}. I'm interested — can we talk? 😊`);
+  window.open(`https://wa.me/${num}?text=${msg}`, "_blank");
+}
+
+// ── Post Your Request toggle ──────────────────────────────────
+document.getElementById("btnPostRequest").addEventListener("click", () => {
+  const section = document.getElementById("rmFormSection");
+  section.classList.toggle("open");
+  if (section.classList.contains("open")) {
+    setTimeout(() => section.scrollIntoView({ behavior:"smooth", block:"start" }), 80);
+  }
+});
+
+// ── Form submission ───────────────────────────────────────────
+function submitRoommatePost() {
+  let valid = true;
+
+  // Validate required fields
+  const checks = [
+    { id:"fg-budgetMin", val:"f-budgetMin" },
+    { id:"fg-budgetMax", val:"f-budgetMax" },
+    { id:"fg-area", val:"f-area" },
+    { id:"fg-timeline", val:"f-timeline" },
+    { id:"fg-gender", val:"f-gender" },
+    { id:"fg-phone", val:"f-phone" },
+  ];
+
+  checks.forEach(c => {
+    const fg = document.getElementById(c.id);
+    const input = document.getElementById(c.val);
+    if (!input.value.trim()) {
+      fg.classList.add("has-err");
+      valid = false;
+    } else {
+      fg.classList.remove("has-err");
+    }
+  });
+
+  // Phone validation
+  const phone = document.getElementById("f-phone").value.trim();
+  if (phone && !/^[0-9+\s\-]{9,14}$/.test(phone)) {
+    document.getElementById("fg-phone").classList.add("has-err");
+    valid = false;
+  }
+
+  if (!valid) return;
+
+  // Success
+  const msg = document.getElementById("formSuccess");
+  msg.style.display = "block";
+  msg.scrollIntoView({ behavior:"smooth", block:"nearest" });
+
+  // Inject new post at top (simulated)
+  const lifestyleTags = [...document.querySelectorAll(".lifestyle-group input:checked")].map(i => i.value);
+  const newPost = {
+    id: POSTS.length + 1,
+    initials: "ME",
+    name: "You",
+    level: "Student",
+    campus: "LAUTECH",
+    posted: "Just now",
+    budgetMin: parseInt(document.getElementById("f-budgetMin").value) || 0,
+    budgetMax: parseInt(document.getElementById("f-budgetMax").value) || 0,
+    area: document.getElementById("f-area").value,
+    timeline: document.getElementById("f-timeline").value,
+    genderPref: document.getElementById("f-gender").value,
+    roommatesNeeded: parseInt(document.getElementById("f-count").value) || 1,
+    lifestyle: lifestyleTags,
+    desc: document.getElementById("f-desc").value || "Looking for a good roommate!",
+    phone: document.getElementById("f-phone").value,
+    available: true
+  };
+  POSTS.unshift(newPost);
+
+  setTimeout(() => {
+    msg.style.display = "none";
+    document.getElementById("rmFormSection").classList.remove("open");
+    renderPosts(POSTS);
+    document.getElementById("rmGrid").scrollIntoView({ behavior:"smooth" });
+  }, 2500);
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderPosts(POSTS);
+</script>
+</body>
+</html>
